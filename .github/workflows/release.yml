@@ -1,8 +1,17 @@
-# v から始まるタグ（例: v1.0.0）をpushすると、各スキルのZIPを作ってリリースに添付する。
-# リリースノートには注釈付きタグのメッセージを使う。
+# 各スキルのZIPを作ってGitHubリリースに添付する。
+# 実行方法は2通り:
+#   1. Actions タブ → Release → Run workflow で、バージョン（例: v1.0.0）を入力して実行
+#   2. v から始まるタグをpushする
+# リリースノートは .github/release-notes/<バージョン>.md があればそれを使い、なければ自動生成する。
+# 同じバージョンのリリースが既にある場合は、ZIPだけを差し替える。
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "リリースするバージョン（例: v1.0.0）"
+        required: true
   push:
     tags:
       - "v*"
@@ -13,19 +22,22 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version || github.ref_name }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Build skill ZIPs
         run: bash scripts/package.sh
 
-      - name: Create release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Create or update release
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.zip \
-            --title "$GITHUB_REF_NAME" \
-            --notes-from-tag \
-            --verify-tag
+          NOTES=".github/release-notes/${VERSION}.md"
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/*.zip --clobber
+          elif [ -f "$NOTES" ]; then
+            gh release create "$VERSION" dist/*.zip --title "$VERSION" --target "$GITHUB_SHA" --notes-file "$NOTES"
+          else
+            gh release create "$VERSION" dist/*.zip --title "$VERSION" --target "$GITHUB_SHA" --generate-notes
+          fi
