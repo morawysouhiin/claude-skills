@@ -1,0 +1,31 @@
+# v から始まるタグ（例: v1.0.0）をpushすると、各スキルのZIPを作ってリリースに添付する。
+# リリースノートには注釈付きタグのメッセージを使う。
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Build skill ZIPs
+        run: bash scripts/package.sh
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/*.zip \
+            --title "$GITHUB_REF_NAME" \
+            --notes-from-tag \
+            --verify-tag
